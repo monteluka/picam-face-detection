@@ -1,5 +1,21 @@
 import cv2
 import numpy as np
+from picamera2 import Picamera2
+
+# starts the picam2 camera object and returns it
+def initiateCamera():
+    camera = Picamera2()
+    # set small resolution so we can process faces faster
+    # also set format to BGR from the start so we don't have
+    # to convert the image ourselves
+    cameraConfig = camera.create_video_configuration(
+        main={"size": (640,480),
+              "format": "BGR888"}
+    )
+    camera.configure(cameraConfig)
+    camera.start()
+    return camera
+
 
 # number has to be in range [0, 15]
 def getCatHead(catHeadsImg, number):
@@ -38,37 +54,51 @@ def createMask(catHeadImg):
     return mask
 
 def main():
-    img = cv2.imread("./res/faces.jpg")
+    # start the camera with our needed config
+    camera = initiateCamera()
+
+    # get the image that has all the cat heads
     catHeadsImg = cv2.imread("./res/cute-cartoon-kitten-faces.jpg")
 
     # set up the face cascade
     faceDetector = cv2.CascadeClassifier('./data/haarcascade_frontalface_default.xml')
 
-    # convert image to grayscale
-    imgGray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # while loop that will get image from camera and manipulate it if necesarry
+    while True:
+        # get the image from the camera
+        img = camera.capture_array()
 
-    # get the info on the face box
-    detectedFaceInfo = faceDetector.detectMultiScale(imgGray, 1.3, 5)
+        # convert image to grayscale
+        imgGray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    # draw over the detected face(s)
-    for (x, y, width, height) in detectedFaceInfo:
-        # first draw a rectangle over detected face
-        cv2.rectangle(img, (x,y), (x+width, y+height), (255,0,0), 5)
-        # now place cat head over face
-        catHeadImg = getCatHead(catHeadsImg, 0)
-        catHeadImg = cv2.resize(catHeadImg, (width, height))
-        # create a mask of the image the separates background and foreground
-        catHeadMask = createMask(catHeadImg)
-        # define the pixels that make up the detected face region
-        faceArea = img[y:y+height, x:x+width]
-        # pixels in the facial area will be replaced by pixels from the cat head image
-        # where pixels in the mask are marked as foreground (0xFF)
-        faceArea[catHeadMask == 255] = catHeadImg[catHeadMask == 255]
+        # get the info on the face box
+        detectedFaceInfo = faceDetector.detectMultiScale(imgGray, 1.3, 5)
 
-    # display the final image with detection borders
-    cv2.imshow("Detected Heads", img)
-    cv2.waitKey(0)
+        # draw over the detected face(s)
+        for (x, y, width, height) in detectedFaceInfo:
+            # first draw a rectangle over detected face
+            cv2.rectangle(img, (x,y), (x+width, y+height), (255,0,0), 5)
+            # now place cat head over face
+            catHeadImg = getCatHead(catHeadsImg, 0)
+            catHeadImg = cv2.resize(catHeadImg, (width, height))
+            # create a mask of the image the separates background and foreground
+            catHeadMask = createMask(catHeadImg)
+            # define the pixels that make up the detected face region
+            faceArea = img[y:y+height, x:x+width]
+            # pixels in the facial area will be replaced by pixels from the cat head image
+            # where pixels in the mask are marked as foreground (0xFF)
+            faceArea[catHeadMask == 255] = catHeadImg[catHeadMask == 255]
+
+        # display the final image with detection borders
+        cv2.imshow("Detected Heads", img)
+
+        # wait for the window to update
+        if cv2.waitKey(33) > -1:
+            break
+
+    # free resources
     cv2.destroyAllWindows()
+    camera.stop()
 
 if __name__ == "__main__":
     main()
